@@ -14,7 +14,7 @@ const app = new Frog({
 })
 
 // Uncomment to use Edge Runtime
-// export const runtime = 'edge'
+export const runtime = 'edge'
 
 app.frame('/:arg', (c) => {
   const {  status } = c
