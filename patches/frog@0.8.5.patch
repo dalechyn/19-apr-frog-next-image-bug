@@ -1,8 +1,16 @@
 diff --git a/_lib/frog-base.js b/_lib/frog-base.js
-index 7b859c4e2576d9abdac3c720c0466c22d26facc6..5e6e94a7d7e8d845f4eaced847f3142464ad2375 100644
+index 7b859c4e2576d9abdac3c720c0466c22d26facc6..4b96e57832da33292e5a5a9b105654af1b1d3bbd 100644
 --- a/_lib/frog-base.js
 +++ b/_lib/frog-base.js
-@@ -58,407 +58,412 @@ import { version } from './version.js';
+@@ -11,7 +11,6 @@ import { fromQuery } from './utils/fromQuery.js';
+ import { getButtonValues } from './utils/getButtonValues.js';
+ import { getCastActionContext } from './utils/getCastActionContext.js';
+ import { getFrameContext } from './utils/getFrameContext.js';
+-import { getFrameMetadata } from './utils/getFrameMetadata.js';
+ import { getImagePaths } from './utils/getImagePaths.js';
+ import { getRequestUrl } from './utils/getRequestUrl.js';
+ import { getRouteParameters } from './utils/getRouteParameters.js';
+@@ -58,407 +57,450 @@ import { version } from './version.js';
   * ```
   */
  export class FrogBase {
@@ -334,8 +342,6 @@ index 7b859c4e2576d9abdac3c720c0466c22d26facc6..5e6e94a7d7e8d845f4eaced847f31424
 -                    for (const [key, value] of Object.entries(headers ?? {}))
 -                        c.header(key, value);
 -                    return c.json({ message });
--                });
--                return this;
 +        return this;
 +      }
 +    });
@@ -351,108 +357,14 @@ index 7b859c4e2576d9abdac3c720c0466c22d26facc6..5e6e94a7d7e8d845f4eaced847f31424
 +        for (const imagePath of imagePaths) {
 +          this.hono.get(imagePath, async (c) => {
 +            const url = getRequestUrl(c.req);
-+            const query = c.req.query();
-+            if (!query.image) {
-+              // If the query is doesn't have an image, it is an initial request to a frame.
-+              // Therefore we need to get the link to fetch the original image and jump once again in this method to resolve the options,
-+              // but now with query params set.
-+              console.log('urls', url.href, url.href.replace('/image', ''))
-+              const metadata = await getFrameMetadata(url.href.replace('/image', '')); // Stripping `/image` (6 characters) from the end of the url.
-+              const frogImage = metadata.find(({ property }) => property === 'frog:image');
-+              if (!frogImage)
-+                throw new Error('Unexpected error: frog:image meta tag is not present in the frame.');
-+              // Redirect to this route but now with search params and return the response
-+              return c.redirect(frogImage.content);
-             }
--        });
--        Object.defineProperty(this, "frame", {
--            enumerable: true,
--            configurable: true,
--            writable: true,
--            value: (...parameters) => {
--                const [path, middlewares, handler, options = {}] = getRouteParameters(...parameters);
--                const { verify = this.verify } = options;
--                // OG Image Route
--                const imagePaths = getImagePaths(parseHonoPath(path));
--                for (const imagePath of imagePaths) {
--                    this.hono.get(imagePath, async (c) => {
--                        const url = getRequestUrl(c.req);
--                        const query = c.req.query();
--                        if (!query.image) {
--                            // If the query is doesn't have an image, it is an initial request to a frame.
--                            // Therefore we need to get the link to fetch the original image and jump once again in this method to resolve the options,
--                            // but now with query params set.
--                            const metadata = await getFrameMetadata(url.href.slice(0, -6)); // Stripping `/image` (6 characters) from the end of the url.
--                            const frogImage = metadata.find(({ property }) => property === 'frog:image');
--                            if (!frogImage)
--                                throw new Error('Unexpected error: frog:image meta tag is not present in the frame.');
--                            // Redirect to this route but now with search params and return the response
--                            return c.redirect(frogImage.content);
--                        }
--                        const defaultImageOptions = await (async () => {
--                            if (typeof this.imageOptions === 'function')
--                                return await this.imageOptions();
--                            return this.imageOptions;
--                        })();
--                        const fonts = await (async () => {
--                            if (this.ui?.vars?.fonts)
--                                return Object.values(this.ui?.vars.fonts).flat();
--                            if (typeof options?.fonts === 'function')
--                                return await options.fonts();
--                            if (options?.fonts)
--                                return options.fonts;
--                            return defaultImageOptions?.fonts;
--                        })();
--                        const { headers = this.headers, image, imageOptions = defaultImageOptions, } = fromQuery(query);
--                        const image_ = JSON.parse(lz.decompressFromEncodedURIComponent(image));
--                        return new ImageResponse(image_, {
--                            width: 1200,
--                            height: 630,
--                            ...imageOptions,
--                            format: imageOptions?.format ?? 'png',
--                            fonts: await parseFonts(fonts),
--                            headers: imageOptions?.headers ?? headers,
--                        });
--                    });
--                }
--                // Frame Route (implements GET & POST).
--                this.hono.use(parseHonoPath(path), ...middlewares, async (c) => {
--                    const url = getRequestUrl(c.req);
--                    const origin = this.origin ?? url.origin;
--                    const assetsUrl = origin + parsePath(this.assetsPath);
--                    const baseUrl = origin + parsePath(this.basePath);
--                    const { context, getState } = getFrameContext({
--                        context: await requestBodyToContext(c, {
--                            hub: this.hub ||
--                                (this.hubApiUrl ? { apiUrl: this.hubApiUrl } : undefined),
--                            secret: this.secret,
--                            verify,
--                        }),
--                        initialState: this._initialState,
--                        origin,
--                    });
--                    if (context.url !== parsePath(url.href))
--                        return c.redirect(context.url);
--                    const response = await handler(context);
--                    if (response instanceof Response)
--                        return response;
--                    if (response.status === 'error') {
--                        c.status(response.error.statusCode ?? 400);
--                        return c.json({ message: response.error.message });
--                    }
--                    const { action, browserLocation = this.browserLocation, headers = this.headers, imageAspectRatio = this.imageAspectRatio, image, imageOptions: imageOptions_ = this.imageOptions, intents, ogImage, title = 'Frog Frame', } = response.data;
--                    const buttonValues = getButtonValues(parseIntents(intents));
--                    if (context.status === 'redirect' && context.buttonIndex) {
--                        const buttonValue = buttonValues[context.buttonIndex - 1];
--                        const location = buttonValue?.replace(/^_r:/, '');
--                        if (!location)
--                            throw new Error('location required to redirect');
--                        return c.redirect(location, 302);
++            const origin = this.origin ?? url.origin;
++            const assetsUrl = origin + parsePath(this.assetsPath);
 +            const defaultImageOptions = await (async () => {
 +              if (typeof this.imageOptions === 'function')
 +                return await this.imageOptions();
 +              return this.imageOptions;
 +            })();
++            const { headers = this.headers, image, imageOptions = defaultImageOptions, } = fromQuery(c.req.query());
 +            const fonts = await (async () => {
 +              if (this.ui?.vars?.fonts)
 +                return Object.values(this.ui?.vars.fonts).flat();
@@ -462,8 +374,55 @@ index 7b859c4e2576d9abdac3c720c0466c22d26facc6..5e6e94a7d7e8d845f4eaced847f31424
 +                return options.fonts;
 +              return defaultImageOptions?.fonts;
 +            })();
-+            const { headers = this.headers, image, imageOptions = defaultImageOptions, } = fromQuery(query);
-+            const image_ = JSON.parse(lz.decompressFromEncodedURIComponent(image));
++            const image_ = image
++              ? JSON.parse(lz.decompressFromEncodedURIComponent(image))
++              : await (async () => {
++                // Request body will be empty since a request for the image is always done with
++                // `GET` http method. Thus, the result of the next invocation is intristically the same
++                // as getting frame context for an initial frame.
++                const { context } = getFrameContext({
++                  context: await requestBodyToContext(c, {
++                    hub: this.hub ||
++                      (this.hubApiUrl ? { apiUrl: this.hubApiUrl } : undefined),
++                    secret: this.secret,
++                    verify,
++                  }),
++                  initialState: this._initialState,
++                  origin,
++                });
++                const response = await handler(context);
++                // Initial frames should never return non-'success' response as there is no `frameData`
++                // to return an error response against.
++                if (response.status !== 'success')
++                  throw new Error('Unexpected error: Initial frame cannot return an error response.');
++                const image = response.data.image;
++                // `image` should never be of type `string` in this case as `fc:frame:image` is set directly
++                // to the image URL or it's base64 data representation in case it is string, thus resolving such
++                // would never trigger this endpoint.
++                if (typeof image === 'string')
++                  throw new Error('Unexpected error: Expected `image` of type `JSX.Element` for the initial frame image.');
++                return parseImage(_jsx("div", {
++                  style: {
++                    display: 'flex',
++                    flexDirection: 'column',
++                    height: '100%',
++                    width: '100%',
++                  }, children: await response.data.image
++                }), {
++                  assetsUrl,
++                  ui: {
++                    ...this.ui,
++                    vars: {
++                      ...this.ui?.vars,
++                      frame: {
++                        height: imageOptions?.height,
++                        width: imageOptions?.width,
++                      },
++                    },
++                  },
+                 });
+-                return this;
++              })();
 +            return new ImageResponse(image_, {
 +              width: 1200,
 +              height: 630,
@@ -553,26 +512,28 @@ index 7b859c4e2576d9abdac3c720c0466c22d26facc6..5e6e94a7d7e8d845f4eaced847f31424
 +          })();
 +          const imageUrl = await (async () => {
 +            if (typeof image !== 'string') {
-+              const compressedImage = lz.compressToEncodedURIComponent(JSON.stringify(await parseImage(_jsx("div", {
-+                style: {
-+                  display: 'flex',
-+                  flexDirection: 'column',
-+                  height: '100%',
-+                  width: '100%',
-+                }, children: await image
-+              }), {
-+                assetsUrl,
-+                ui: {
-+                  ...this.ui,
-+                  vars: {
-+                    ...this.ui?.vars,
-+                    frame: {
-+                      height: imageOptions?.height,
-+                      width: imageOptions?.width,
++              const compressedImage = context.status === 'initial'
++                ? null
++                : lz.compressToEncodedURIComponent(JSON.stringify(await parseImage(_jsx("div", {
++                  style: {
++                    display: 'flex',
++                    flexDirection: 'column',
++                    height: '100%',
++                    width: '100%',
++                  }, children: await image
++                }), {
++                  assetsUrl,
++                  ui: {
++                    ...this.ui,
++                    vars: {
++                      ...this.ui?.vars,
++                      frame: {
++                        height: imageOptions?.height,
++                        width: imageOptions?.width,
++                      },
 +                    },
 +                  },
-+                },
-+              })));
++                })));
 +              const imageParams = toSearchParams({
 +                image: compressedImage,
 +                imageOptions: imageOptions
@@ -584,8 +545,92 @@ index 7b859c4e2576d9abdac3c720c0466c22d26facc6..5e6e94a7d7e8d845f4eaced847f31424
 +                  : undefined,
 +                headers,
 +              });
-+              return `${parsePath(context.url)}/image?${imageParams}`;
-+            }
++              return `${parsePath(context.url)}/image${imageParams.size !== 0 ? `?${imageParams}` : ''}`;
+             }
+-        });
+-        Object.defineProperty(this, "frame", {
+-            enumerable: true,
+-            configurable: true,
+-            writable: true,
+-            value: (...parameters) => {
+-                const [path, middlewares, handler, options = {}] = getRouteParameters(...parameters);
+-                const { verify = this.verify } = options;
+-                // OG Image Route
+-                const imagePaths = getImagePaths(parseHonoPath(path));
+-                for (const imagePath of imagePaths) {
+-                    this.hono.get(imagePath, async (c) => {
+-                        const url = getRequestUrl(c.req);
+-                        const query = c.req.query();
+-                        if (!query.image) {
+-                            // If the query is doesn't have an image, it is an initial request to a frame.
+-                            // Therefore we need to get the link to fetch the original image and jump once again in this method to resolve the options,
+-                            // but now with query params set.
+-                            const metadata = await getFrameMetadata(url.href.slice(0, -6)); // Stripping `/image` (6 characters) from the end of the url.
+-                            const frogImage = metadata.find(({ property }) => property === 'frog:image');
+-                            if (!frogImage)
+-                                throw new Error('Unexpected error: frog:image meta tag is not present in the frame.');
+-                            // Redirect to this route but now with search params and return the response
+-                            return c.redirect(frogImage.content);
+-                        }
+-                        const defaultImageOptions = await (async () => {
+-                            if (typeof this.imageOptions === 'function')
+-                                return await this.imageOptions();
+-                            return this.imageOptions;
+-                        })();
+-                        const fonts = await (async () => {
+-                            if (this.ui?.vars?.fonts)
+-                                return Object.values(this.ui?.vars.fonts).flat();
+-                            if (typeof options?.fonts === 'function')
+-                                return await options.fonts();
+-                            if (options?.fonts)
+-                                return options.fonts;
+-                            return defaultImageOptions?.fonts;
+-                        })();
+-                        const { headers = this.headers, image, imageOptions = defaultImageOptions, } = fromQuery(query);
+-                        const image_ = JSON.parse(lz.decompressFromEncodedURIComponent(image));
+-                        return new ImageResponse(image_, {
+-                            width: 1200,
+-                            height: 630,
+-                            ...imageOptions,
+-                            format: imageOptions?.format ?? 'png',
+-                            fonts: await parseFonts(fonts),
+-                            headers: imageOptions?.headers ?? headers,
+-                        });
+-                    });
+-                }
+-                // Frame Route (implements GET & POST).
+-                this.hono.use(parseHonoPath(path), ...middlewares, async (c) => {
+-                    const url = getRequestUrl(c.req);
+-                    const origin = this.origin ?? url.origin;
+-                    const assetsUrl = origin + parsePath(this.assetsPath);
+-                    const baseUrl = origin + parsePath(this.basePath);
+-                    const { context, getState } = getFrameContext({
+-                        context: await requestBodyToContext(c, {
+-                            hub: this.hub ||
+-                                (this.hubApiUrl ? { apiUrl: this.hubApiUrl } : undefined),
+-                            secret: this.secret,
+-                            verify,
+-                        }),
+-                        initialState: this._initialState,
+-                        origin,
+-                    });
+-                    if (context.url !== parsePath(url.href))
+-                        return c.redirect(context.url);
+-                    const response = await handler(context);
+-                    if (response instanceof Response)
+-                        return response;
+-                    if (response.status === 'error') {
+-                        c.status(response.error.statusCode ?? 400);
+-                        return c.json({ message: response.error.message });
+-                    }
+-                    const { action, browserLocation = this.browserLocation, headers = this.headers, imageAspectRatio = this.imageAspectRatio, image, imageOptions: imageOptions_ = this.imageOptions, intents, ogImage, title = 'Frog Frame', } = response.data;
+-                    const buttonValues = getButtonValues(parseIntents(intents));
+-                    if (context.status === 'redirect' && context.buttonIndex) {
+-                        const buttonValue = buttonValues[context.buttonIndex - 1];
+-                        const location = buttonValue?.replace(/^_r:/, '');
+-                        if (!location)
+-                            throw new Error('location required to redirect');
+-                        return c.redirect(location, 302);
 +            if (image.startsWith('http') || image.startsWith('data'))
 +              return image;
 +            return `${assetsUrl + parsePath(image)}`;
@@ -813,7 +858,7 @@ index 7b859c4e2576d9abdac3c720c0466c22d26facc6..5e6e94a7d7e8d845f4eaced847f31424
                  tailwind.config = {
                    plugins: [{
                      handler({ addBase }) {
-@@ -466,143 +471,161 @@ export class FrogBase {
+@@ -466,143 +508,153 @@ export class FrogBase {
                      },
                    }],
                  }
@@ -890,15 +935,7 @@ index 7b859c4e2576d9abdac3c720c0466c22d26facc6..5e6e94a7d7e8d845f4eaced847f31424
 +          return c.render(_jsxs(_Fragment, {
 +            children: [html`<!DOCTYPE html>`, _jsxs("html", {
 +              lang: "en", children: [_jsxs("head", {
-+                children: [_jsx("meta", { property: "fc:frame", content: "vNext" }), _jsx("meta", { property: "fc:frame:image:aspect_ratio", content: imageAspectRatio }), _jsx("meta", {
-+                  property: "fc:frame:image", content: context.status === 'initial'
-+                    ? `${context.url}/image`
-+                    : imageUrl
-+                }), _jsx("meta", {
-+                  property: "og:image", content: ogImageUrl ?? context.status === 'initial'
-+                    ? `${context.url}/image`
-+                    : imageUrl
-+                }), _jsx("meta", { property: "og:title", content: title }), _jsx("meta", {
++                children: [_jsx("meta", { property: "fc:frame", content: "vNext" }), _jsx("meta", { property: "fc:frame:image:aspect_ratio", content: imageAspectRatio }), _jsx("meta", { property: "fc:frame:image", content: imageUrl }), _jsx("meta", { property: "og:image", content: ogImageUrl ?? imageUrl }), _jsx("meta", { property: "og:title", content: title }), _jsx("meta", {
 +                  property: "fc:frame:post_url", content: context.status === 'initial'
 +                    ? `${postUrl}?${nextFrameStateSearch.toString()}`
 +                    : postUrl
@@ -915,7 +952,7 @@ index 7b859c4e2576d9abdac3c720c0466c22d26facc6..5e6e94a7d7e8d845f4eaced847f31424
 +                    req: undefined,
 +                    state: getState(),
 +                  })
-+                })), _jsx("meta", { property: "frog:image", content: imageUrl })]
++                }))]
 +              }), _jsx("body", {})]
 +            })]
 +          }));
@@ -1110,62 +1147,3 @@ index 7b859c4e2576d9abdac3c720c0466c22d26facc6..5e6e94a7d7e8d845f4eaced847f31424
 +  }
  }
  //# sourceMappingURL=frog-base.js.map
-diff --git a/_lib/utils/getFrameMetadata.js b/_lib/utils/getFrameMetadata.js
-index d0ac8d83e19c991a4bc70163664c936f6cf357f9..a9fe5825bff4bef3fa71a90dc90b807ab1cf4e69 100644
---- a/_lib/utils/getFrameMetadata.js
-+++ b/_lib/utils/getFrameMetadata.js
-@@ -8,29 +8,31 @@ export const metaTagPropertyRegex = /^(fc|frog|og:image|og:title)/;
-  * const frameMetadata = await getFrameMetadata(`https://myframe.com/api`)
-  */
- export async function getFrameMetadata(url) {
--    try {
--        const text = await fetch(url).then((r) => r.text());
--        const dom = parseFromString(text.replace(/<!doctype html>/i, ''));
--        const nodes = dom.getElementsByTagName('meta');
--        const metaTags = [];
--        for (const node of nodes) {
--            const property = node.getAttribute('property');
--            const content = node.getAttribute('content');
--            if (!property.match(metaTagPropertyRegex))
--                continue;
--            metaTags.push({
--                property: property,
--                content,
--            });
--        }
--        return metaTags;
--    }
--    catch (error) {
--        throw new Error([
--            `Failed to extract frame meta tags from "${url}".`,
--            '',
--            `Error: ${error}`,
--        ].join('\n'));
-+  try {
-+    const text = await fetch(url).then((r) => r.text());
-+    console.log(text)
-+    console.error(text)
-+    const dom = parseFromString(text.replace(/<!doctype html>/i, ''));
-+    const nodes = dom.getElementsByTagName('meta');
-+    const metaTags = [];
-+    for (const node of nodes) {
-+      const property = node.getAttribute('property');
-+      const content = node.getAttribute('content');
-+      if (!property.match(metaTagPropertyRegex))
-+        continue;
-+      metaTags.push({
-+        property: property,
-+        content,
-+      });
-     }
-+    return metaTags;
-+  }
-+  catch (error) {
-+    throw new Error([
-+      `Failed to extract frame meta tags from "${url}".`,
-+      '',
-+      `Error: ${error}`,
-+    ].join('\n'));
-+  }
- }
- //# sourceMappingURL=getFrameMetadata.js.map
