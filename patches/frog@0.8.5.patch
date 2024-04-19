@@ -1,5 +1,5 @@
 diff --git a/_lib/frog-base.js b/_lib/frog-base.js
-index 7b859c4e2576d9abdac3c720c0466c22d26facc6..3960529e4f039fb58c1eacbba4af3039c539a783 100644
+index 7b859c4e2576d9abdac3c720c0466c22d26facc6..5e6e94a7d7e8d845f4eaced847f3142464ad2375 100644
 --- a/_lib/frog-base.js
 +++ b/_lib/frog-base.js
 @@ -58,407 +58,412 @@ import { version } from './version.js';
@@ -356,8 +356,8 @@ index 7b859c4e2576d9abdac3c720c0466c22d26facc6..3960529e4f039fb58c1eacbba4af3039
 +              // If the query is doesn't have an image, it is an initial request to a frame.
 +              // Therefore we need to get the link to fetch the original image and jump once again in this method to resolve the options,
 +              // but now with query params set.
-+              console.log('urls', url.href, url.href.slice(0, -6))
-+              const metadata = await getFrameMetadata(url.href.slice(0, -6)); // Stripping `/image` (6 characters) from the end of the url.
++              console.log('urls', url.href, url.href.replace('/image', ''))
++              const metadata = await getFrameMetadata(url.href.replace('/image', '')); // Stripping `/image` (6 characters) from the end of the url.
 +              const frogImage = metadata.find(({ property }) => property === 'frog:image');
 +              if (!frogImage)
 +                throw new Error('Unexpected error: frog:image meta tag is not present in the frame.');
@@ -1111,7 +1111,7 @@ index 7b859c4e2576d9abdac3c720c0466c22d26facc6..3960529e4f039fb58c1eacbba4af3039
  }
  //# sourceMappingURL=frog-base.js.map
 diff --git a/_lib/utils/getFrameMetadata.js b/_lib/utils/getFrameMetadata.js
-index d0ac8d83e19c991a4bc70163664c936f6cf357f9..70afc4cb869f5ad0bbbb1c71c33fdd7751d9cddf 100644
+index d0ac8d83e19c991a4bc70163664c936f6cf357f9..a9fe5825bff4bef3fa71a90dc90b807ab1cf4e69 100644
 --- a/_lib/utils/getFrameMetadata.js
 +++ b/_lib/utils/getFrameMetadata.js
 @@ -8,29 +8,31 @@ export const metaTagPropertyRegex = /^(fc|frog|og:image|og:title)/;
